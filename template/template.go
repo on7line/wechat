@@ -1,4 +1,4 @@
-package message
+package template
 
 import (
 	"encoding/json"

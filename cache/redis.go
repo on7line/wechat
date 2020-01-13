@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -68,6 +69,62 @@ func (r *Redis) Get(key string) interface{} {
 	return reply
 }
 
+//GetString 获取一个string值
+func (r *Redis) GetString(key string) string {
+	conn := r.conn.Get()
+	defer conn.Close()
+
+	var data []byte
+	var err error
+	if data, err = redis.Bytes(conn.Do("GET", key)); err != nil {
+		return ""
+	}
+
+	return string(data)
+}
+
+//Decr 获取一个string值
+func (r *Redis) Decr(key string) int64 {
+	conn := r.conn.Get()
+	defer conn.Close()
+
+	count, err := redis.Int64(conn.Do("DECR", key))
+	if err != nil {
+		fmt.Println("REDIS:::::", err)
+		return -1
+	}
+	return count
+}
+
+//Incr 获取一个string值
+func (r *Redis) Incr(key string) int64 {
+	conn := r.conn.Get()
+	defer conn.Close()
+
+	count, err := redis.Int64(conn.Do("INCR", key))
+	if err != nil {
+		fmt.Println("REDIS:::::", err)
+		return -1
+	}
+	return count
+}
+
+//SetString 设置一个值
+func (r *Redis) SetString(key string, val string, timeout time.Duration) (err error) {
+	conn := r.conn.Get()
+	defer conn.Close()
+
+	// fmt.Printf("[Redis-go] SET %s = %v\n", key, val)
+	if timeout == 0*time.Second {
+		_, err = conn.Do("SET", key, val)
+		return
+	}
+
+	_, err = conn.Do("SETEX", key, int64(timeout/time.Second), val)
+
+	return
+}
+
 //Set 设置一个值
 func (r *Redis) Set(key string, val interface{}, timeout time.Duration) (err error) {
 	conn := r.conn.Get()
@@ -78,8 +135,36 @@ func (r *Redis) Set(key string, val interface{}, timeout time.Duration) (err err
 		return
 	}
 
+	// fmt.Printf("[Redis-go] SET %s = %v\n", key, val)
+	if timeout == 0*time.Second {
+		_, err = conn.Do("SET", key, data)
+		return
+	}
+
 	_, err = conn.Do("SETEX", key, int64(timeout/time.Second), data)
 
+	return
+}
+
+// SetLock 设置Redis锁
+func (r *Redis) SetLock(key string, val interface{}) (ok bool, err error) {
+	conn := r.conn.Get()
+	defer conn.Close()
+
+	var (
+		data  []byte
+		reply int64
+	)
+	if data, err = json.Marshal(val); err != nil {
+		return
+	}
+
+	// fmt.Printf("[Redis-go] SETNX %s = %v\n", key, val)
+	reply, err = redis.Int64(conn.Do("SETNX", key, data))
+
+	if reply == 1 {
+		return true, err
+	}
 	return
 }
 
@@ -100,7 +185,7 @@ func (r *Redis) IsExist(key string) bool {
 func (r *Redis) Delete(key string) error {
 	conn := r.conn.Get()
 	defer conn.Close()
-
+	// fmt.Println("REDIS DEL KEY")
 	if _, err := conn.Do("DEL", key); err != nil {
 		return err
 	}
